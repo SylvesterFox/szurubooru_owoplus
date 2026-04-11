@@ -25,7 +25,8 @@ services:
       - "./server/config.yaml:/opt/app/config.yaml"
 
   client:
-    image: szurubooru/client:latest
+##    image: szurubooru/client:latest
+    build: client
     depends_on:
       - server
     environment:
