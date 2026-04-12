@@ -21,7 +21,9 @@ thumbnails:
 
 # settings used to download files from the web on behalf of the api users
 user_agent:
+e621_user_agent:
 max_dl_filesize: 25.0E+6 # maximum filesize limit in bytes
+fuzzysearch_api_key:
 
 # automatically convert animated GIF uploads to video formats
 convert:

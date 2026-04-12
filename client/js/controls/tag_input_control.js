@@ -239,6 +239,38 @@ class TagInputControl extends events.EventTarget {
         this.dispatchEvent(new CustomEvent("change"));
     }
 
+    mergeTagNames(tagNames) {
+        let added = 0;
+
+        for (let tagName of tagNames) {
+            tagName = (tagName || "").trim();
+            if (
+                !tagName ||
+                tagName === "." ||
+                tagName === ".." ||
+                this.tags.isTaggedWith(tagName)
+            ) {
+                continue;
+            }
+
+            const tag = new Tag();
+            tag.names = [tagName];
+            tag.category = null;
+            this.tags.add(tag);
+
+            const listItemNode = this._createListItemNode(tag);
+            listItemNode.classList.add("added");
+            this._tagListNode.prependChild(listItemNode);
+            _fadeOutListItemNodeStatus(listItemNode);
+            added++;
+        }
+
+        if (added) {
+            this.dispatchEvent(new CustomEvent("change"));
+        }
+        return added;
+    }
+
     _evtInputPaste(e) {
         e.preventDefault();
         const pastedText = window.clipboardData
