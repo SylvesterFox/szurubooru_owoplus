@@ -63,7 +63,10 @@ def test_search_e621_post_uses_image_search_with_api_key():
     post = model.Post()
     post.post_id = 123
     post.mime_type = "image/jpeg"
-    config.config = {"fuzzysearch_api_key": "test-key"}
+    config.config = {
+        "fuzzysearch_api_key": "test-key",
+        "user_agent": "szuru-test-agent",
+    }
 
     with patch("szurubooru.func.external_import._request_json") as request_json:
         request_json.return_value = [
@@ -79,6 +82,39 @@ def test_search_e621_post_uses_image_search_with_api_key():
         assert kwargs["expected_statuses"] == [200]
         assert kwargs["service_name"] == "FuzzySearch"
         assert kwargs["headers"]["x-api-key"] == "test-key"
+        assert kwargs["headers"]["User-Agent"] == "szuru-test-agent"
         assert kwargs["headers"]["Content-Type"].startswith(
             "multipart/form-data; boundary="
         )
+
+
+def test_search_e621_post_uses_default_user_agent_for_fuzzysearch():
+    post = model.Post()
+    post.post_id = 123
+    post.mime_type = "image/jpeg"
+    config.config = {
+        "fuzzysearch_api_key": "test-key",
+        "user_agent": "",
+    }
+
+    with patch("szurubooru.func.external_import._request_json") as request_json:
+        request_json.return_value = [
+            {"site": "e621", "site_id": 555, "distance": 3}
+        ]
+
+        external_import._search_e621_post(b"test-image", post)
+
+        _, kwargs = request_json.call_args
+        assert (
+            kwargs["headers"]["User-Agent"]
+            == "szurubooru-external-import/1.0"
+        )
+
+
+def test_raise_http_error_for_fuzzysearch_403_includes_payload():
+    with pytest.raises(external_import.errors.ThirdPartyError) as ex:
+        external_import._raise_http_error(
+            "FuzzySearch", 403, '{"message":"forbidden"}'
+        )
+
+    assert 'HTTP 403: {"message":"forbidden"}.' in str(ex.value)

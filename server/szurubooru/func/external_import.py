@@ -89,13 +89,18 @@ def _search_fuzzysearch_by_image(
             )
         },
     )
+    headers = {
+        "x-api-key": api_key,
+        "Content-Type": content_type,
+    }
+    user_agent = _get_external_import_user_agent()
+    if user_agent:
+        headers["User-Agent"] = user_agent
+
     return _request_json(
         FUZZYSEARCH_IMAGE_URL,
         data=body,
-        headers={
-            "x-api-key": api_key,
-            "Content-Type": content_type,
-        },
+        headers=headers,
         method="POST",
         expected_statuses=[200],
         service_name="FuzzySearch",
@@ -112,6 +117,15 @@ def _deduplicate_sources(values: List[str]) -> List[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _get_external_import_user_agent() -> str:
+    return (
+        config.config.get("user_agent")
+        or "szurubooru-external-import/1.0"
+    )
+
+
 def _request_json(
     url: str,
     headers: Optional[Dict[str, str]] = None,
@@ -156,6 +170,15 @@ def _raise_http_error(service_name: str, status: int, payload: str) -> None:
         if status == 401:
             raise errors.ThirdPartyError(
                 "FuzzySearch API key is invalid or missing."
+            )
+        if status == 403:
+            details = payload.strip()
+            if details:
+                raise errors.ThirdPartyError(
+                    f"FuzzySearch rejected the request with HTTP 403: {details}."
+                )
+            raise errors.ThirdPartyError(
+                "FuzzySearch rejected the request with HTTP 403."
             )
         if status == 413:
             raise errors.ValidationError(
