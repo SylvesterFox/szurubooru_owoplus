@@ -32,6 +32,20 @@
             <input type='button' value='Cancel' class='cancel'/>
         </div>
 
+        <% if (ctx.enableSafety) { %>
+            <div class='global-safety'>
+                <span class='label'>Safety for all:</span>
+                <% for (let safety of ['safe', 'sketchy', 'unsafe']) { %>
+                    <%= ctx.makeRadio({
+                        name: 'global-safety',
+                        value: safety,
+                        text: safety[0].toUpperCase() + safety.substr(1),
+                        selectedValue: 'unsafe',
+                    }) %>
+                <% } %>
+            </div>
+        <% } %>
+
         <div class='messages'></div>
 
         <ul class='uploadables-container'></ul>

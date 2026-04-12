@@ -150,8 +150,9 @@ class PostUploadView extends events.EventTarget {
         super();
         this._ctx = ctx;
         this._hostNode = document.getElementById("content-holder");
+        this._globalSafety = "unsafe";
 
-        views.replaceContent(this._hostNode, template());
+        views.replaceContent(this._hostNode, template(this._ctx));
         views.syncScrollPosition();
 
         this._cancelButtonNode.disabled = true;
@@ -184,6 +185,11 @@ class PostUploadView extends events.EventTarget {
         this._formNode.addEventListener("submit", (e) =>
             this._evtFormSubmit(e)
         );
+        for (let radioNode of this._globalSafetyRadioNodes) {
+            radioNode.addEventListener("change", (e) =>
+                this._evtGlobalSafetyChange(e)
+            );
+        }
         this._formNode.classList.add("inactive");
     }
 
@@ -228,6 +234,7 @@ class PostUploadView extends events.EventTarget {
                 duplicatesFound++;
                 continue;
             }
+            uploadable.safety = this._globalSafety;
             this._uploadables.push(uploadable);
             this._emit("change");
             this._renderRowNode(uploadable);
@@ -280,6 +287,22 @@ class PostUploadView extends events.EventTarget {
     _evtCancelButtonClick(e) {
         e.preventDefault();
         this._emit("cancel");
+    }
+
+    _evtGlobalSafetyChange(e) {
+        if (!e.target.checked) {
+            return;
+        }
+        this._globalSafety = e.target.value;
+        for (let uploadable of this._uploadables) {
+            uploadable.safety = this._globalSafety;
+            let checkedSafetyNode = uploadable.rowNode.querySelector(
+                `.safety input[value="${this._globalSafety}"]`
+            );
+            if (checkedSafetyNode) {
+                checkedSafetyNode.checked = true;
+            }
+        }
     }
 
     _evtFormSubmit(e) {
@@ -427,6 +450,10 @@ class PostUploadView extends events.EventTarget {
 
     get _skipDuplicatesCheckboxNode() {
         return this._hostNode.querySelector("form [name=skip-duplicates]");
+    }
+
+    get _globalSafetyRadioNodes() {
+        return this._hostNode.querySelectorAll("form [name=global-safety]");
     }
 
     get _alwaysUploadSimilarCheckboxNode() {
