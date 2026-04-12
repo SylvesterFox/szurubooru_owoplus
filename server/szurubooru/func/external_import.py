@@ -1,8 +1,6 @@
 import json
-import hashlib
 import mimetypes
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 from typing import Any, Dict, List, Optional
@@ -12,19 +10,7 @@ from szurubooru.func import files, posts
 
 
 FUZZYSEARCH_IMAGE_URL = "https://api-next.fuzzysearch.net/v1/image"
-FUZZYSEARCH_HASHES_URL = "https://api-next.fuzzysearch.net/v1/hashes"
-E621_POST_URL = "https://e621.net/posts/{post_id}.json"
 E621_POST_PAGE_URL = "https://e621.net/posts/{post_id}"
-TAG_CATEGORY_ORDER = [
-    "artist",
-    "copyright",
-    "character",
-    "species",
-    "general",
-    "lore",
-    "meta",
-    "contributor",
-]
 
 
 class E621PostNotFoundError(errors.NotFoundError):
@@ -42,10 +28,10 @@ def import_post_metadata(post: model.Post) -> Dict[str, Any]:
         raise errors.ProcessingError("Post content is unavailable.")
 
     search_result = _search_e621_post(content, post)
-    e621_post = _get_e621_post(int(search_result["site_id"]))
-
     post_id = int(search_result["site_id"])
-    post_url = E621_POST_PAGE_URL.format(post_id=post_id)
+    post_url = search_result.get("url") or E621_POST_PAGE_URL.format(
+        post_id=post_id
+    )
     fuzzysearch_sources = _deduplicate_sources(
         [post_url] + search_result.get("site_info", {}).get("sources", [])
     )
@@ -55,17 +41,21 @@ def import_post_metadata(post: model.Post) -> Dict[str, Any]:
         "postId": post_id,
         "postUrl": post_url,
         "distance": search_result.get("distance"),
-        "tags": _extract_e621_tags(e621_post),
+        "tags": _deduplicate_sources(search_result.get("tags") or []),
         "sources": fuzzysearch_sources,
     }
 
 
 def _search_e621_post(content: bytes, post: model.Post) -> Dict[str, Any]:
     api_key = config.config.get("fuzzysearch_api_key")
-    if api_key:
-        response = _search_fuzzysearch_by_image(content, post, api_key)
-    else:
-        response = _search_fuzzysearch_by_hashes(content)
+    if not api_key:
+        raise errors.ThirdPartyError(
+            "FuzzySearch API key is not configured. "
+            "The /v1/hashes endpoint requires an image hash value, "
+            "not md5/sha1/sha256 file hashes."
+        )
+
+    response = _search_fuzzysearch_by_image(content, post, api_key)
 
     e621_results = [
         result for result in response if result.get("site") == "e621"
@@ -112,63 +102,6 @@ def _search_fuzzysearch_by_image(
     )
 
 
-def _search_fuzzysearch_by_hashes(content: bytes) -> List[Dict[str, Any]]:
-    return _request_json(
-        _get_fuzzysearch_hashes_url(content),
-        method="GET",
-        expected_statuses=[200],
-        service_name="FuzzySearch",
-    )
-
-
-def _get_fuzzysearch_hashes_url(content: bytes) -> str:
-    query = urllib.parse.urlencode(
-        {
-            "md5": hashlib.md5(content).hexdigest(),
-            "sha1": hashlib.sha1(content).hexdigest(),
-            "sha256": hashlib.sha256(content).hexdigest(),
-        }
-    )
-    return f"{FUZZYSEARCH_HASHES_URL}?{query}"
-
-
-def _get_e621_post(post_id: int) -> Dict[str, Any]:
-    response = _request_json(
-        _get_e621_post_api_url(post_id),
-        headers={
-            "User-Agent": _get_e621_user_agent(),
-            "Accept": "application/json",
-        },
-        method="GET",
-        expected_statuses=[200],
-        service_name="e621",
-    )
-    post = response.get("post")
-    if not post:
-        raise E621PostNotFoundError("Matching e621 post was not found.")
-    return post
-
-
-def _get_e621_post_api_url(post_id: int) -> str:
-    url = E621_POST_URL.format(post_id=post_id)
-    query_params = {}
-    if config.config.get("e621_login"):
-        query_params["login"] = config.config["e621_login"]
-    if config.config.get("e621_api_key"):
-        query_params["api_key"] = config.config["e621_api_key"]
-    if not query_params:
-        return url
-    return f"{url}?{urllib.parse.urlencode(query_params)}"
-
-
-def _extract_e621_tags(post: Dict[str, Any]) -> List[str]:
-    post_tags = post.get("tags") or {}
-    tag_names: List[str] = []
-    for category in TAG_CATEGORY_ORDER:
-        tag_names.extend(post_tags.get(category) or [])
-    return _deduplicate_sources(tag_names)
-
-
 def _deduplicate_sources(values: List[str]) -> List[str]:
     result = []
     seen = set()
@@ -179,16 +112,6 @@ def _deduplicate_sources(values: List[str]) -> List[str]:
         seen.add(value)
         result.append(value)
     return result
-
-
-def _get_e621_user_agent() -> str:
-    return (
-        config.config.get("e621_user_agent")
-        or config.config.get("user_agent")
-        or "szurubooru-e621-import/1.0"
-    )
-
-
 def _request_json(
     url: str,
     headers: Optional[Dict[str, str]] = None,
@@ -242,15 +165,6 @@ def _raise_http_error(service_name: str, status: int, payload: str) -> None:
             raise errors.ProcessingError(
                 "FuzzySearch rate limit has been exhausted."
             )
-    if service_name == "e621":
-        if status == 404:
-            raise E621PostNotFoundError("Matching e621 post was not found.")
-        if status == 403:
-            raise errors.ThirdPartyError(
-                "e621 rejected the request. Check the configured User-Agent."
-            )
-        if status == 429:
-            raise errors.ProcessingError("e621 rate limit has been exhausted.")
     raise errors.ProcessingError(
         f"{service_name} returned HTTP {status}."
     )

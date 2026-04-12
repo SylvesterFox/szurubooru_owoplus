@@ -21,13 +21,8 @@ thumbnails:
 
 # settings used to download files from the web on behalf of the api users
 user_agent:
-e621_user_agent:
-# optional e621 credentials for authenticated API requests
-e621_login:
-e621_api_key:
 max_dl_filesize: 25.0E+6 # maximum filesize limit in bytes
-# optional; if omitted, FuzzySearch falls back to /v1/hashes
-fuzzysearch_api_key:
+fuzzysearch_api_key: eluIOaOhIP1RXlgYetkcZCF8la7p3NoCPy8U0i8dKiT4xdIH
 
 # automatically convert animated GIF uploads to video formats
 convert:
