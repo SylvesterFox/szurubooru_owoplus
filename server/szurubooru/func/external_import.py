@@ -1,6 +1,8 @@
 import json
+import hashlib
 import mimetypes
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from typing import Any, Dict, List, Optional
@@ -10,6 +12,7 @@ from szurubooru.func import files, posts
 
 
 FUZZYSEARCH_IMAGE_URL = "https://api-next.fuzzysearch.net/v1/image"
+FUZZYSEARCH_HASHES_URL = "https://api-next.fuzzysearch.net/v1/hashes"
 E621_POST_URL = "https://e621.net/posts/{post_id}.json"
 E621_POST_PAGE_URL = "https://e621.net/posts/{post_id}"
 TAG_CATEGORY_ORDER = [
@@ -25,10 +28,6 @@ TAG_CATEGORY_ORDER = [
 
 
 class E621PostNotFoundError(errors.NotFoundError):
-    pass
-
-
-class FuzzySearchNotConfiguredError(errors.ThirdPartyError):
     pass
 
 
@@ -63,34 +62,10 @@ def import_post_metadata(post: model.Post) -> Dict[str, Any]:
 
 def _search_e621_post(content: bytes, post: model.Post) -> Dict[str, Any]:
     api_key = config.config.get("fuzzysearch_api_key")
-    if not api_key:
-        raise FuzzySearchNotConfiguredError(
-            "FuzzySearch API key is not configured."
-        )
-
-    mime_type = post.mime_type or "application/octet-stream"
-    extension = mimetypes.guess_extension(mime_type) or ".bin"
-    body, content_type = _encode_multipart_formdata(
-        {},
-        {
-            "image": (
-                f"post-{post.post_id}{extension}",
-                content,
-                mime_type,
-            )
-        },
-    )
-    response = _request_json(
-        FUZZYSEARCH_IMAGE_URL,
-        data=body,
-        headers={
-            "x-api-key": api_key,
-            "Content-Type": content_type,
-        },
-        method="POST",
-        expected_statuses=[200],
-        service_name="FuzzySearch",
-    )
+    if api_key:
+        response = _search_fuzzysearch_by_image(content, post, api_key)
+    else:
+        response = _search_fuzzysearch_by_hashes(content)
 
     e621_results = [
         result for result in response if result.get("site") == "e621"
@@ -109,9 +84,57 @@ def _search_e621_post(content: bytes, post: model.Post) -> Dict[str, Any]:
     return e621_results[0]
 
 
+def _search_fuzzysearch_by_image(
+    content: bytes, post: model.Post, api_key: str
+) -> List[Dict[str, Any]]:
+    mime_type = post.mime_type or "application/octet-stream"
+    extension = mimetypes.guess_extension(mime_type) or ".bin"
+    body, content_type = _encode_multipart_formdata(
+        {},
+        {
+            "image": (
+                f"post-{post.post_id}{extension}",
+                content,
+                mime_type,
+            )
+        },
+    )
+    return _request_json(
+        FUZZYSEARCH_IMAGE_URL,
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "Content-Type": content_type,
+        },
+        method="POST",
+        expected_statuses=[200],
+        service_name="FuzzySearch",
+    )
+
+
+def _search_fuzzysearch_by_hashes(content: bytes) -> List[Dict[str, Any]]:
+    return _request_json(
+        _get_fuzzysearch_hashes_url(content),
+        method="GET",
+        expected_statuses=[200],
+        service_name="FuzzySearch",
+    )
+
+
+def _get_fuzzysearch_hashes_url(content: bytes) -> str:
+    query = urllib.parse.urlencode(
+        {
+            "md5": hashlib.md5(content).hexdigest(),
+            "sha1": hashlib.sha1(content).hexdigest(),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    )
+    return f"{FUZZYSEARCH_HASHES_URL}?{query}"
+
+
 def _get_e621_post(post_id: int) -> Dict[str, Any]:
     response = _request_json(
-        E621_POST_URL.format(post_id=post_id),
+        _get_e621_post_api_url(post_id),
         headers={
             "User-Agent": _get_e621_user_agent(),
             "Accept": "application/json",
@@ -124,6 +147,18 @@ def _get_e621_post(post_id: int) -> Dict[str, Any]:
     if not post:
         raise E621PostNotFoundError("Matching e621 post was not found.")
     return post
+
+
+def _get_e621_post_api_url(post_id: int) -> str:
+    url = E621_POST_URL.format(post_id=post_id)
+    query_params = {}
+    if config.config.get("e621_login"):
+        query_params["login"] = config.config["e621_login"]
+    if config.config.get("e621_api_key"):
+        query_params["api_key"] = config.config["e621_api_key"]
+    if not query_params:
+        return url
+    return f"{url}?{urllib.parse.urlencode(query_params)}"
 
 
 def _extract_e621_tags(post: Dict[str, Any]) -> List[str]:
