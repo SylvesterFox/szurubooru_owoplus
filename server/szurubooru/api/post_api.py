@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from szurubooru import db, errors, model, rest, search
 from szurubooru.func import (
     auth,
+    external_import,
     favorites,
     mime,
     posts,
@@ -115,6 +116,19 @@ def get_post(ctx: rest.Context, params: Dict[str, str]) -> rest.Response:
     auth.verify_privilege(ctx.user, "posts:view")
     post = _get_post(params)
     return _serialize_post(ctx, post)
+
+
+@rest.routes.post("/post/(?P<post_id>[^/]+)/e621-import/?")
+def import_e621_metadata(
+    ctx: rest.Context, params: Dict[str, str]
+) -> rest.Response:
+    if not (
+        auth.has_privilege(ctx.user, "posts:edit:tags")
+        or auth.has_privilege(ctx.user, "posts:edit:source")
+    ):
+        raise errors.AuthError("Insufficient privileges to do this.")
+    post = _get_post(params)
+    return external_import.import_post_metadata(post)
 
 
 @rest.routes.put("/post/(?P<post_id>[^/]+)/?")

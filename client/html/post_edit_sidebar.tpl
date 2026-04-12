@@ -64,12 +64,14 @@
                     text: 'Source',
                     value: ctx.post.source,
                 }) %>
+                <a href class='import-e621-sources'>Autofill sources from fuzzysearch</a>
             </section>
         <% } %>
 
         <% if (ctx.canEditPostTags) { %>
             <section class='tags'>
                 <%= ctx.makeTextInput({}) %>
+                <a href class='import-e621-tags'>Import tags from e621</a>
             </section>
         <% } %>
 

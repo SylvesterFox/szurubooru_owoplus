@@ -205,6 +205,13 @@ class Post extends events.EventTarget {
         });
     }
 
+    importE621Metadata() {
+        return api.post(
+            uri.formatApiLink("post", this.id, "e621-import"),
+            {}
+        );
+    }
+
     _savePoolPosts() {
         const difference = (a, b) => a.filter((post) => !b.hasPoolId(post.id));
 

@@ -99,6 +99,8 @@ class PostEditSidebarControl extends events.EventTarget {
             );
         }
 
+        this._importedE621Metadata = null;
+
         if (this._poolInputNode) {
             this._poolControl = new PoolInputControl(
                 this._poolInputNode,
@@ -117,9 +119,11 @@ class PostEditSidebarControl extends events.EventTarget {
             );
             this._contentFileDropper.addEventListener("fileadd", (e) => {
                 this._newPostContent = e.detail.files[0];
+                this._importedE621Metadata = null;
             });
             this._contentFileDropper.addEventListener("urladd", (e) => {
                 this._newPostContent = e.detail.urls[0];
+                this._importedE621Metadata = null;
             });
         }
 
@@ -177,6 +181,18 @@ class PostEditSidebarControl extends events.EventTarget {
         if (this._mergeLinkNode) {
             this._mergeLinkNode.addEventListener("click", (e) =>
                 this._evtMergeClick(e)
+            );
+        }
+
+        if (this._importE621TagsLinkNode) {
+            this._importE621TagsLinkNode.addEventListener("click", (e) =>
+                this._evtImportE621TagsClick(e)
+            );
+        }
+
+        if (this._importE621SourcesLinkNode) {
+            this._importE621SourcesLinkNode.addEventListener("click", (e) =>
+                this._evtImportE621SourcesClick(e)
             );
         }
 
@@ -250,6 +266,7 @@ class PostEditSidebarControl extends events.EventTarget {
     }
 
     _evtPostContentChange(e) {
+        this._importedE621Metadata = null;
         this._contentFileDropper.reset();
     }
 
@@ -299,6 +316,88 @@ class PostEditSidebarControl extends events.EventTarget {
                 })
             );
         }
+    }
+
+    _evtImportE621TagsClick(e) {
+        e.preventDefault();
+        this.clearMessages();
+        this._loadE621Metadata().then(
+            (metadata) => {
+                const addedCount = this._tagControl.mergeTagNames(
+                    metadata.tags || []
+                );
+                this._syncExpanderTitles();
+                if (addedCount) {
+                    this.showSuccess(
+                        `Imported ${addedCount} tags from e621. Save the post to persist them.`
+                    );
+                    this.dispatchEvent(new CustomEvent("change"));
+                } else {
+                    this.showSuccess(
+                        "All e621 tags are already present on this post."
+                    );
+                }
+            },
+            (error) => this.showError(error.message)
+        );
+    }
+
+    _evtImportE621SourcesClick(e) {
+        e.preventDefault();
+        this.clearMessages();
+        this._loadE621Metadata().then(
+            (metadata) => {
+                const sources = this._mergeSources(
+                    this._sourceInputNode.value,
+                    metadata.sources || []
+                );
+                if (sources === this._sourceInputNode.value) {
+                    this.showSuccess(
+                        "All fuzzysearch sources are already present on this post."
+                    );
+                    return;
+                }
+                this._sourceInputNode.value = sources;
+                this.showSuccess(
+                    "Sources imported from fuzzysearch. Save the post to persist them."
+                );
+                this.dispatchEvent(new CustomEvent("change"));
+            },
+            (error) => this.showError(error.message)
+        );
+    }
+
+    _loadE621Metadata() {
+        if (this._importedE621Metadata) {
+            return Promise.resolve(this._importedE621Metadata);
+        }
+        return this._post.importE621Metadata().then((metadata) => {
+            this._importedE621Metadata = metadata;
+            return Promise.resolve(metadata);
+        });
+    }
+
+    _mergeSources(existingSource, importedSources) {
+        const sources = [];
+        const seen = new Set();
+
+        for (let source of (existingSource || "").split("\n")) {
+            source = source.trim();
+            if (source && !seen.has(source)) {
+                seen.add(source);
+                sources.push(source);
+            }
+        }
+
+        for (let source of importedSources) {
+            source = (source || "").trim();
+            if (source && !seen.has(source)) {
+                seen.add(source);
+                sources.push(source);
+            }
+        }
+
+        return sources.join("\n");
     }
 
     _evtNoteTextChangeRequest(e) {
@@ -503,6 +602,16 @@ class PostEditSidebarControl extends events.EventTarget {
 
     get _sourceInputNode() {
         return this._formNode.querySelector(".post-source textarea");
+    }
+
+    get _importE621TagsLinkNode() {
+        return this._formNode.querySelector(".tags .import-e621-tags");
+    }
+
+    get _importE621SourcesLinkNode() {
+        return this._formNode.querySelector(
+            ".post-source .import-e621-sources"
+        );
     }
 
     get _featureLinkNode() {
