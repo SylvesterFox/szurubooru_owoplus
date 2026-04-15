@@ -43,6 +43,9 @@ class PostListController {
             parameters: ctx.parameters,
             enableSafety: api.safetyEnabled(),
             canBulkEditTags: api.hasPrivilege("posts:bulk-edit:tags"),
+            canBulkImportE621: api.hasPrivilege(
+                "posts:bulk-edit:import-e621"
+            ),
             canBulkEditSafety: api.hasPrivilege("posts:bulk-edit:safety"),
             canBulkDelete: api.hasPrivilege("posts:bulk-edit:delete"),
             bulkEdit: {
@@ -51,6 +54,9 @@ class PostListController {
         });
         this._headerView.addEventListener("navigate", (e) =>
             this._evtNavigate(e)
+        );
+        this._headerView.addEventListener("bulkImportE621", () =>
+            this._evtBulkImportE621()
         );
 
         if (this._headerView._bulkDeleteEditor) {
@@ -63,6 +69,7 @@ class PostListController {
         }
 
         this._postsMarkedForDeletion = [];
+        this._bulkImportE621InProgress = false;
         this._syncPageController();
     }
 
@@ -132,6 +139,93 @@ class PostListController {
                     this._headerView._navigate();
                 });
         }
+    }
+
+    _getBulkImportE621Query() {
+        return `sort:id ${this._ctx.parameters.query || ""}`.trim();
+    }
+
+    _loadAllPostIdsForBulkImportE621() {
+        const ids = [];
+        const fields = ["id"];
+        const limit = 100;
+        const query = this._getBulkImportE621Query();
+
+        const loadPage = (offset) =>
+            PostList.search(query, offset, limit, fields).then((response) => {
+                ids.push(...response.results.map((post) => post.id));
+                if (ids.length >= response.total || !response.results.length) {
+                    return Promise.resolve(ids);
+                }
+                return loadPage(offset + response.results.length);
+            });
+
+        return loadPage(0);
+    }
+
+    _evtBulkImportE621() {
+        if (this._bulkImportE621InProgress) {
+            return;
+        }
+        this._bulkImportE621InProgress = true;
+        this._pageController.view.clearMessages();
+
+        this._loadAllPostIdsForBulkImportE621()
+            .then((postIds) => {
+                if (!postIds.length) {
+                    this._headerView.resetBulkImportE621();
+                    this.showSuccess("No posts matched the current search.");
+                    return Promise.resolve();
+                }
+
+                let completed = 0;
+                let updated = 0;
+                let skipped = 0;
+                this._headerView.setBulkImportE621Progress(0, postIds.length);
+
+                const importNext = (index) => {
+                    if (index >= postIds.length) {
+                        this._syncPageController();
+                        this.showSuccess(
+                            `Finished e621 auto import. Updated ${updated}/${postIds.length}, skipped ${skipped}.`
+                        );
+                        return Promise.resolve();
+                    }
+
+                    return api
+                        .post(
+                            uri.formatApiLink(
+                                "post",
+                                postIds[index],
+                                "e621-import",
+                                "apply"
+                            ),
+                            {}
+                        )
+                        .then((result) => {
+                            if (result.status === "updated") {
+                                updated++;
+                            } else {
+                                skipped++;
+                            }
+                            completed++;
+                            this._headerView.setBulkImportE621Progress(
+                                completed,
+                                postIds.length
+                            );
+                            return importNext(index + 1);
+                        });
+                };
+
+                return importNext(0);
+            })
+            .catch((error) => {
+                this._headerView.resetBulkImportE621();
+                this._pageController.showError(error.message);
+            })
+            .then(() => {
+                this._bulkImportE621InProgress = false;
+            });
     }
 
     _syncPageController() {

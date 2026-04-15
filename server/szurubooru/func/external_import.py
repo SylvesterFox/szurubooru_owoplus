@@ -119,6 +119,42 @@ def _deduplicate_sources(values: List[str]) -> List[str]:
     return result
 
 
+def merge_sources(
+    existing_source: Optional[str], imported_sources: List[str]
+) -> str:
+    values = (existing_source or "").splitlines() + (imported_sources or [])
+    return "\n".join(_deduplicate_sources(values))
+
+
+def get_post_metadata_update(
+    post: model.Post, metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    imported_tags = _deduplicate_sources(metadata.get("tags") or [])
+    imported_sources = _deduplicate_sources(metadata.get("sources") or [])
+    existing_tags = [tag.first_name for tag in post.tags]
+    existing_sources = _deduplicate_sources((post.source or "").splitlines())
+    merged_tags = _deduplicate_sources(existing_tags + imported_tags)
+    merged_source = merge_sources(post.source, imported_sources)
+
+    return {
+        "tags": merged_tags,
+        "source": merged_source or None,
+        "addedTags": len(
+            [tag_name for tag_name in merged_tags if tag_name not in existing_tags]
+        ),
+        "addedSources": len(
+            [
+                source
+                for source in merged_source.splitlines()
+                if source not in existing_sources
+            ]
+        ),
+        "hasChanges": (
+            merged_tags != existing_tags or (merged_source or None) != post.source
+        ),
+    }
+
+
 def _get_external_import_user_agent() -> str:
     return (
         config.config.get("user_agent")
