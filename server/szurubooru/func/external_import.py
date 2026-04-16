@@ -3,14 +3,16 @@ import mimetypes
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from szurubooru import config, errors, model
+from szurubooru import config, db, errors, model
 from szurubooru.func import files, posts
 
 
 FUZZYSEARCH_IMAGE_URL = "https://api-next.fuzzysearch.net/v1/image"
 E621_POST_PAGE_URL = "https://e621.net/posts/{post_id}"
+FUZZYSEARCH_REQUEST_TIMEOUT = 30
 
 
 class E621PostNotFoundError(errors.NotFoundError):
@@ -104,6 +106,7 @@ def _search_fuzzysearch_by_image(
         method="POST",
         expected_statuses=[200],
         service_name="FuzzySearch",
+        timeout=FUZZYSEARCH_REQUEST_TIMEOUT,
     )
 
 
@@ -155,6 +158,67 @@ def get_post_metadata_update(
     }
 
 
+def ensure_post_e621_import_cache_table() -> None:
+    model.PostE621ImportCache.__table__.create(
+        bind=db.session.get_bind(), checkfirst=True
+    )
+
+
+def try_get_cached_post_metadata(post: model.Post) -> Optional[Dict[str, Any]]:
+    cache_entry = (
+        db.session.query(model.PostE621ImportCache)
+        .filter(model.PostE621ImportCache.post_id == post.post_id)
+        .one_or_none()
+    )
+    if not cache_entry or cache_entry.checksum != post.checksum:
+        return None
+
+    return {
+        "status": cache_entry.status,
+        "site": "e621",
+        "postId": _safe_int(cache_entry.post_url),
+        "postUrl": cache_entry.post_url,
+        "distance": cache_entry.distance,
+        "tags": _deserialize_cached_values(cache_entry.tags),
+        "sources": _deserialize_cached_values(cache_entry.sources),
+    }
+
+
+def set_cached_post_metadata(
+    post: model.Post, status: str, metadata: Optional[Dict[str, Any]] = None
+) -> None:
+    cache_entry = (
+        db.session.query(model.PostE621ImportCache)
+        .filter(model.PostE621ImportCache.post_id == post.post_id)
+        .one_or_none()
+    )
+    if not cache_entry:
+        cache_entry = model.PostE621ImportCache(post_id=post.post_id)
+        db.session.add(cache_entry)
+
+    cache_entry.checksum = post.checksum
+    cache_entry.status = status
+    cache_entry.checked_time = datetime.utcnow()
+    cache_entry.post_url = metadata.get("postUrl") if metadata else None
+    cache_entry.distance = metadata.get("distance") if metadata else None
+    cache_entry.tags = _serialize_cached_values(
+        metadata.get("tags") if metadata else []
+    )
+    cache_entry.sources = _serialize_cached_values(
+        metadata.get("sources") if metadata else []
+    )
+
+
+def purge_cached_post_metadata() -> int:
+    deleted_count = (
+        db.session.query(model.PostE621ImportCache).delete(
+            synchronize_session=False
+        )
+    )
+    db.session.commit()
+    return deleted_count
+
+
 def _get_external_import_user_agent() -> str:
     return (
         config.config.get("user_agent")
@@ -169,6 +233,7 @@ def _request_json(
     method: str = "GET",
     expected_statuses: Optional[List[int]] = None,
     service_name: str = "remote service",
+    timeout: Optional[int] = None,
 ) -> Any:
     request = urllib.request.Request(url, data=data, method=method)
     for key, value in (headers or {}).items():
@@ -177,7 +242,7 @@ def _request_json(
         request.add_header("Accept", "application/json")
 
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             if expected_statuses and response.status not in expected_statuses:
                 raise errors.ProcessingError(
                     f"{service_name} returned unexpected HTTP {response.status}."
@@ -195,6 +260,23 @@ def _request_json(
         raise errors.ProcessingError(
             f"{service_name} returned invalid JSON."
         ) from ex
+
+
+def _serialize_cached_values(values: List[str]) -> str:
+    return "\n".join(_deduplicate_sources(values or []))
+
+
+def _deserialize_cached_values(values: Optional[str]) -> List[str]:
+    return _deduplicate_sources((values or "").splitlines())
+
+
+def _safe_int(post_url: Optional[str]) -> Optional[int]:
+    if not post_url:
+        return None
+    try:
+        return int(post_url.rstrip("/").split("/")[-1])
+    except (TypeError, ValueError):
+        return None
 
 
 def _raise_http_error(service_name: str, status: int, payload: str) -> None:

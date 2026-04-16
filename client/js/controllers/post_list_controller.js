@@ -58,6 +58,9 @@ class PostListController {
         this._headerView.addEventListener("bulkImportE621", () =>
             this._evtBulkImportE621()
         );
+        this._headerView.addEventListener("clearE621Cache", () =>
+            this._evtClearE621Cache()
+        );
 
         if (this._headerView._bulkDeleteEditor) {
             this._headerView._bulkDeleteEditor.addEventListener(
@@ -202,6 +205,9 @@ class PostListController {
                             ),
                             {}
                         )
+                        .catch((error) =>
+                            this._retryBulkImportE621Post(postIds[index], error)
+                        )
                         .then((result) => {
                             if (result.status === "updated") {
                                 updated++;
@@ -226,6 +232,68 @@ class PostListController {
             .then(() => {
                 this._bulkImportE621InProgress = false;
             });
+    }
+
+    _evtClearE621Cache() {
+        if (
+            !confirm(
+                "Clear the cached e621 import results for all posts?"
+            )
+        ) {
+            return;
+        }
+        this._pageController.view.clearMessages();
+        api.post(uri.formatApiLink("posts", "e621-import-cache", "purge"), {})
+            .then((result) => {
+                this.showSuccess(`Cleared ${result.deleted} cached entries.`);
+            })
+            .catch((error) => this.showError(error.message));
+    }
+
+    _retryBulkImportE621Post(postId, error) {
+        if (!this._isRetriableE621ImportError(error)) {
+            return Promise.reject(error);
+        }
+
+        const attemptImport = (attempt) => {
+            if (attempt > 2) {
+                return Promise.resolve({ status: "skipped", reason: "timeout" });
+            }
+            return this._delay(10000).then(() =>
+                api
+                    .post(
+                        uri.formatApiLink(
+                            "post",
+                            postId,
+                            "e621-import",
+                            "apply"
+                        ),
+                        {}
+                    )
+                    .catch((retryError) => {
+                        if (!this._isRetriableE621ImportError(retryError)) {
+                            return Promise.reject(retryError);
+                        }
+                        return attemptImport(attempt + 1);
+                    })
+            );
+        };
+
+        return attemptImport(1);
+    }
+
+    _isRetriableE621ImportError(error) {
+        const message = (error && error.message ? error.message : "").toLowerCase();
+        return (
+            error.status === 504 ||
+            message.includes("timed out") ||
+            message.includes("timeout") ||
+            message.includes("unable to reach fuzzysearch")
+        );
+    }
+
+    _delay(duration) {
+        return new Promise((resolve) => window.setTimeout(resolve, duration));
     }
 
     _syncPageController() {

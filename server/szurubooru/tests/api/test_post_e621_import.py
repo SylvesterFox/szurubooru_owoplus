@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from datetime import datetime
 
 import pytest
 
@@ -155,3 +156,57 @@ def test_applying_e621_metadata_requires_admin_privilege(
             ),
             {"post_id": post.post_id},
         )
+
+
+def test_applying_e621_metadata_uses_not_found_cache(
+    context_factory, post_factory, user_factory
+):
+    post = post_factory(id=1, checksum="checksum-1")
+    db.session.add(post)
+    db.session.add(
+        model.PostE621ImportCache(
+            post_id=post.post_id,
+            checksum=post.checksum,
+            status=model.PostE621ImportCache.STATUS_NOT_FOUND,
+            checked_time=datetime(2000, 1, 1),
+        )
+    )
+    db.session.flush()
+
+    with patch("szurubooru.func.external_import.import_post_metadata"):
+        result = api.post_api.apply_e621_metadata(
+            context_factory(
+                user=user_factory(rank=model.User.RANK_ADMINISTRATOR),
+            ),
+            {"post_id": post.post_id},
+        )
+
+        assert result == {"status": "skipped", "reason": "cached-not-found"}
+        assert not external_import.import_post_metadata.called
+
+
+def test_purging_e621_import_cache(
+    context_factory, post_factory, user_factory
+):
+    post = post_factory(id=1, checksum="checksum-1")
+    db.session.add(post)
+    db.session.add(
+        model.PostE621ImportCache(
+            post_id=post.post_id,
+            checksum=post.checksum,
+            status=model.PostE621ImportCache.STATUS_NOT_FOUND,
+            checked_time=datetime(2000, 1, 1),
+        )
+    )
+    db.session.flush()
+
+    result = api.post_api.purge_e621_import_cache(
+        context_factory(
+            user=user_factory(rank=model.User.RANK_ADMINISTRATOR),
+        )
+    )
+
+    assert result == {"deleted": 1}
+    assert (
+        db.session.query(model.PostE621ImportCache).count() == 0
+    )

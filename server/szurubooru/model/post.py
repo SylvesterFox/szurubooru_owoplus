@@ -183,6 +183,31 @@ class PostSignature(Base):
     post = sa.orm.relationship("Post")
 
 
+class PostE621ImportCache(Base):
+    __tablename__ = "post_e621_import_cache"
+
+    STATUS_FOUND = "found"
+    STATUS_NOT_FOUND = "not-found"
+
+    post_id = sa.Column(
+        "post_id",
+        sa.Integer,
+        sa.ForeignKey("post.id"),
+        primary_key=True,
+        nullable=False,
+        index=True,
+    )
+    checksum = sa.Column("checksum", sa.Unicode(64), nullable=False)
+    status = sa.Column("status", sa.Unicode(32), nullable=False)
+    checked_time = sa.Column("checked_time", sa.DateTime, nullable=False)
+    post_url = sa.Column("post_url", sa.Unicode(512))
+    distance = sa.Column("distance", sa.Integer)
+    tags = sa.Column("tags", sa.UnicodeText)
+    sources = sa.Column("sources", sa.UnicodeText)
+
+    post = sa.orm.relationship("Post")
+
+
 class Post(Base):
     __tablename__ = "post"
 

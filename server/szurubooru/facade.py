@@ -10,6 +10,7 @@ import sqlalchemy.orm.exc
 
 from szurubooru import api, config, db, errors, middleware, rest
 from szurubooru.func.file_uploads import purge_old_uploads
+from szurubooru.func.external_import import ensure_post_e621_import_cache_table
 from szurubooru.func.posts import (
     update_all_md5_checksums,
     update_all_post_signatures,
@@ -129,6 +130,7 @@ def purge_old_uploads_daemon() -> None:
 
 
 _live_migrations = (
+    ensure_post_e621_import_cache_table,
     update_all_post_signatures,
     update_all_md5_checksums,
 )

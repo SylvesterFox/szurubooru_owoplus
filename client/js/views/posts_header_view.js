@@ -206,6 +206,11 @@ class PostsHeaderView extends events.EventTarget {
                 this._evtBulkImportE621Click(e)
             );
         }
+        if (this._clearE621CacheLinkNode) {
+            this._clearE621CacheLinkNode.addEventListener("click", (e) =>
+                this._evtClearE621CacheClick(e)
+            );
+        }
 
         this._bulkEditors = [];
         if (this._bulkEditTagsNode) {
@@ -286,6 +291,10 @@ class PostsHeaderView extends events.EventTarget {
         return this._hostNode.querySelector(".import-e621-progress");
     }
 
+    get _clearE621CacheLinkNode() {
+        return this._hostNode.querySelector(".clear-e621-cache-link");
+    }
+
     _openBulkEditor(editor) {
         editor.toggleOpen(true);
         this._hideBulkEditorsExcept(editor);
@@ -341,6 +350,11 @@ class PostsHeaderView extends events.EventTarget {
             return;
         }
         this.dispatchEvent(new CustomEvent("bulkImportE621", { detail: {} }));
+    }
+
+    _evtClearE621CacheClick(e) {
+        e.preventDefault();
+        this.dispatchEvent(new CustomEvent("clearE621Cache", { detail: {} }));
     }
 
     setBulkImportE621Progress(done, total) {

@@ -141,10 +141,24 @@ def apply_e621_metadata(
     if post.type not in [model.Post.TYPE_IMAGE, model.Post.TYPE_ANIMATION]:
         return {"status": "skipped", "reason": "unsupported-type"}
 
-    try:
-        metadata = external_import.import_post_metadata(post)
-    except external_import.E621PostNotFoundError:
-        return {"status": "skipped", "reason": "not-found"}
+    cached_metadata = external_import.try_get_cached_post_metadata(post)
+    if cached_metadata:
+        if cached_metadata["status"] == model.PostE621ImportCache.STATUS_NOT_FOUND:
+            return {"status": "skipped", "reason": "cached-not-found"}
+        metadata = cached_metadata
+    else:
+        try:
+            metadata = external_import.import_post_metadata(post)
+            external_import.set_cached_post_metadata(
+                post, model.PostE621ImportCache.STATUS_FOUND, metadata
+            )
+            db.session.commit()
+        except external_import.E621PostNotFoundError:
+            external_import.set_cached_post_metadata(
+                post, model.PostE621ImportCache.STATUS_NOT_FOUND
+            )
+            db.session.commit()
+            return {"status": "skipped", "reason": "not-found"}
 
     updated_metadata = external_import.get_post_metadata_update(post, metadata)
     if not updated_metadata["hasChanges"]:
@@ -165,6 +179,16 @@ def apply_e621_metadata(
         "status": "updated",
         "addedTags": updated_metadata["addedTags"],
         "addedSources": updated_metadata["addedSources"],
+    }
+
+
+@rest.routes.post("/posts/e621-import-cache/purge/?")
+def purge_e621_import_cache(
+    ctx: rest.Context, _params: Dict[str, str] = {}
+) -> rest.Response:
+    auth.verify_privilege(ctx.user, "posts:bulk-edit:import-e621")
+    return {
+        "deleted": external_import.purge_cached_post_metadata(),
     }
 
 

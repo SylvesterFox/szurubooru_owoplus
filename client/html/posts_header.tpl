@@ -20,6 +20,7 @@
                 %><span class='append bulk-import-e621'><%
                     %><a href class='mousetrap button append import-e621-link'>Auto import e621</a><%
                     %><span class='button append import-e621-progress'></span><%
+                    %><a href class='mousetrap button append clear-e621-cache-link'>Clear e621 cache</a><%
                 %></span><%
             %><% } %><%
             %><%= ctx.makeTextInput({name: 'tag', value: ctx.parameters.tag}) %><%
