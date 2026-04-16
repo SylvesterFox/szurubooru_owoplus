@@ -201,6 +201,11 @@ class PostsHeaderView extends events.EventTarget {
         this._formNode.addEventListener("submit", (e) =>
             this._evtFormSubmit(e)
         );
+        if (this._bulkImportE621LinkNode) {
+            this._bulkImportE621LinkNode.addEventListener("click", (e) =>
+                this._evtBulkImportE621Click(e)
+            );
+        }
 
         this._bulkEditors = [];
         if (this._bulkEditTagsNode) {
@@ -269,6 +274,18 @@ class PostsHeaderView extends events.EventTarget {
         return this._hostNode.querySelector(".bulk-edit-delete");
     }
 
+    get _bulkImportE621Node() {
+        return this._hostNode.querySelector(".bulk-import-e621");
+    }
+
+    get _bulkImportE621LinkNode() {
+        return this._hostNode.querySelector(".import-e621-link");
+    }
+
+    get _bulkImportE621ProgressNode() {
+        return this._hostNode.querySelector(".import-e621-progress");
+    }
+
     _openBulkEditor(editor) {
         editor.toggleOpen(true);
         this._hideBulkEditorsExcept(editor);
@@ -313,6 +330,33 @@ class PostsHeaderView extends events.EventTarget {
     _evtFormSubmit(e) {
         e.preventDefault();
         this._navigate();
+    }
+
+    _evtBulkImportE621Click(e) {
+        e.preventDefault();
+        if (
+            !this._bulkImportE621Node ||
+            this._bulkImportE621Node.classList.contains("running")
+        ) {
+            return;
+        }
+        this.dispatchEvent(new CustomEvent("bulkImportE621", { detail: {} }));
+    }
+
+    setBulkImportE621Progress(done, total) {
+        if (!this._bulkImportE621Node || !this._bulkImportE621ProgressNode) {
+            return;
+        }
+        this._bulkImportE621Node.classList.add("running");
+        this._bulkImportE621ProgressNode.textContent = `Completed ${done}/${total}`;
+    }
+
+    resetBulkImportE621() {
+        if (!this._bulkImportE621Node || !this._bulkImportE621ProgressNode) {
+            return;
+        }
+        this._bulkImportE621Node.classList.remove("running");
+        this._bulkImportE621ProgressNode.textContent = "";
     }
 
     _navigate() {

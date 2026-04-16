@@ -131,6 +131,43 @@ def import_e621_metadata(
     return external_import.import_post_metadata(post)
 
 
+@rest.routes.post("/post/(?P<post_id>[^/]+)/e621-import/apply/?")
+def apply_e621_metadata(
+    ctx: rest.Context, params: Dict[str, str]
+) -> rest.Response:
+    auth.verify_privilege(ctx.user, "posts:bulk-edit:import-e621")
+    post = _get_post(params)
+
+    if post.type not in [model.Post.TYPE_IMAGE, model.Post.TYPE_ANIMATION]:
+        return {"status": "skipped", "reason": "unsupported-type"}
+
+    try:
+        metadata = external_import.import_post_metadata(post)
+    except external_import.E621PostNotFoundError:
+        return {"status": "skipped", "reason": "not-found"}
+
+    updated_metadata = external_import.get_post_metadata_update(post, metadata)
+    if not updated_metadata["hasChanges"]:
+        return {"status": "skipped", "reason": "no-changes"}
+
+    versions.bump_version(post)
+    new_tags = posts.update_post_tags(post, updated_metadata["tags"])
+    posts.update_post_source(post, updated_metadata["source"])
+    if len(new_tags):
+        db.session.flush()
+        for tag in new_tags:
+            snapshots.create(tag, ctx.user)
+    post.last_edit_time = datetime.utcnow()
+    ctx.session.flush()
+    snapshots.modify(post, ctx.user)
+    ctx.session.commit()
+    return {
+        "status": "updated",
+        "addedTags": updated_metadata["addedTags"],
+        "addedSources": updated_metadata["addedSources"],
+    }
+
+
 @rest.routes.put("/post/(?P<post_id>[^/]+)/?")
 def update_post(ctx: rest.Context, params: Dict[str, str]) -> rest.Response:
     post = _get_post(params)

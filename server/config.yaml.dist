@@ -117,6 +117,7 @@ privileges:
     'posts:bulk-edit:tags':         power
     'posts:bulk-edit:safety':       power
     'posts:bulk-edit:delete':       power
+    'posts:bulk-edit:import-e621':  administrator
 
     'tags:create':                  regular
     'tags:edit:names':              power

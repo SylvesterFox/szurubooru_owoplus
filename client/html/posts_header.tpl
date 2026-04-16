@@ -16,6 +16,12 @@
         %><form class='horizontal bulk-edit bulk-edit-tags'><%
             %><span class='append hint'>Tagging with:</span><%
             %><a href class='mousetrap button append open'>Mass tag</a><%
+            %><% if (ctx.canBulkImportE621) { %><%
+                %><span class='append bulk-import-e621'><%
+                    %><a href class='mousetrap button append import-e621-link'>Auto import e621</a><%
+                    %><span class='button append import-e621-progress'></span><%
+                %></span><%
+            %><% } %><%
             %><%= ctx.makeTextInput({name: 'tag', value: ctx.parameters.tag}) %><%
             %><input class='mousetrap start' type='submit' value='Start tagging'/><%
             %><a href class='mousetrap button append close'>Stop tagging</a><%

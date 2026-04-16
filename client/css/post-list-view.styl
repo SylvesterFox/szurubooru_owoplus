@@ -200,7 +200,6 @@
             width: 100%
             margin-bottom: 0.5em
     .append
-        vertical-align: middle
         font-size: 0.95em
         color: $inactive-link-color
     .bulk-edit
@@ -237,6 +236,14 @@
                     margin-left: 0
         .hint
             margin-right: 1em
+        .bulk-import-e621
+            .import-e621-progress
+                display: none
+            &.running
+                .import-e621-link
+                    display: none
+                .import-e621-progress
+                    display: inline-block
     .bulk-edit-safety
         .append
             @media (max-width: 1000px)
